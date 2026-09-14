@@ -28,14 +28,18 @@ DEFAULT_SHOW_DELIVERED = True
 DEFAULT_DELIVERED_DURATION = 3  # days
 
 # Amazon Domains with email senders
-# Local parts Amazon uses for order/shipping notifications, accepted on every
-# configured domain (the per-domain "sender" below is kept as the primary one).
-AMAZON_SENDER_LOCALPARTS = (
-    "order-update",
-    "shipment-tracking",
-    "auto-confirm",
-    "ship-confirm",
-    "delivery-update",
+# Amazon's notification local parts are localised per marketplace (order-update@amazon.de,
+# verzending-volgen@amazon.nl, shipment-tracking@amazon.com, ...), so every sender on a
+# configured domain is accepted except marketing ones. A mail still needs an order number
+# and a recognised subject to become a package, and the store never moves a status backwards.
+AMAZON_SENDER_DENY_SUBSTRINGS = (
+    "news",
+    "marketing",
+    "promo",
+    "recommend",
+    "deals",
+    "rewards",
+    "survey",
 )
 
 AMAZON_DOMAINS = {

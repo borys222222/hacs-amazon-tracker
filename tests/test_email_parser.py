@@ -306,18 +306,21 @@ class TestBuildImapSearchQuery:
 
 
 class TestSenderWhitelist:
-    """Every Amazon notification local part on a configured domain is accepted."""
+    """Every non-marketing sender on a configured domain is accepted (local parts are localised)."""
 
-    def test_shipment_tracking_sender_accepted(self):
+    def test_localised_notification_senders_accepted(self):
         parser = AmazonEmailParser(["amazon.nl"])
-        assert parser._is_valid_sender("Amazon.nl <shipment-tracking@amazon.nl>")
+        assert parser._is_valid_sender("Amazon.nl <verzending-volgen@amazon.nl>")
+        assert parser._is_valid_sender("shipment-tracking@amazon.nl")
         assert parser._is_valid_sender("order-update@amazon.nl")
 
     def test_marketing_and_foreign_senders_rejected(self):
         parser = AmazonEmailParser(["amazon.nl"])
         assert not parser._is_valid_sender("store-news@amazon.nl")
+        assert not parser._is_valid_sender("marketing@amazon.nl")
         assert not parser._is_valid_sender("order-update@amazon.de")
         assert not parser._is_valid_sender("order-update@amazon.nl.evil.example")
+        assert not parser._is_valid_sender("nobody@example.com")
 
     def test_language_follows_domain_not_local_part(self):
         parser = AmazonEmailParser(["amazon.de", "amazon.nl"])

@@ -13,7 +13,7 @@ from typing import Any
 
 from .const import (
     AMAZON_DOMAINS,
-    AMAZON_SENDER_LOCALPARTS,
+    AMAZON_SENDER_DENY_SUBSTRINGS,
     CARRIER_PATTERNS,
     EMAIL_SUBJECTS,
     ORDER_NUMBER_PATTERN,
@@ -95,18 +95,15 @@ class AmazonEmailParser:
 
     def __init__(self, domains: list[str]) -> None:
         """Initialize with list of Amazon domains to monitor."""
-        # domain part ("amazon.nl") -> language; any Amazon notification local part on
-        # that domain is accepted (see AMAZON_SENDER_LOCALPARTS), not only order-update@
+        # domain part ("amazon.nl") -> language; every non-marketing sender on a configured
+        # domain is accepted, because Amazon localises the local part per marketplace
+        # (order-update@amazon.de, verzending-volgen@amazon.nl, ...)
         self._domain_languages: dict[str, str] = {}
-        self._valid_senders: set[str] = set()
 
         for domain_key in domains:
             domain_config = AMAZON_DOMAINS.get(domain_key)
             if domain_config:
                 self._domain_languages[domain_key.lower()] = domain_config["language"]
-                self._valid_senders.add(domain_config["sender"].lower())
-                for local in AMAZON_SENDER_LOCALPARTS:
-                    self._valid_senders.add(f"{local}@{domain_key.lower()}")
 
     @staticmethod
     def _extract_addr(from_addr: str) -> str:
@@ -116,10 +113,14 @@ class AmazonEmailParser:
         return addr.lower().strip()
 
     def _is_valid_sender(self, from_addr: str) -> bool:
-        """Check if sender is a known Amazon notification address."""
+        """Check if sender is an Amazon notification address on a configured domain."""
         if not from_addr:
             return False
-        return self._extract_addr(from_addr) in self._valid_senders
+        addr = self._extract_addr(from_addr)
+        local, sep, domain = addr.rpartition("@")
+        if not sep or domain not in self._domain_languages:
+            return False
+        return not any(bad in local for bad in AMAZON_SENDER_DENY_SUBSTRINGS)
 
     def _get_language_for_sender(self, from_addr: str) -> str:
         """Get language code for a sender address (by its domain)."""
@@ -364,7 +365,7 @@ class AmazonEmailParser:
 def build_imap_search_query(domains: list[str], since_date: date) -> str:
     """Build an IMAP SEARCH query for Amazon notification emails."""
     # IMAP FROM is a substring match: "@amazon.nl" catches every notification address on
-    # the domain (order-update@, shipment-tracking@, ...); the parser then whitelists them.
+    # the domain (order-update@, verzending-volgen@, ...); the parser filters marketing.
     senders = [f"@{domain_key}" for domain_key in domains if AMAZON_DOMAINS.get(domain_key)]
 
     english_months = [

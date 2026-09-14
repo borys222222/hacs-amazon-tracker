@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config and options flows could not be rendered by Home Assistant's form serializer (`vol.All([vol.In(...)])`) → "Unknown error occurred" after the IMAP step. Both flows now use `cv.multi_select` and validate that at least one domain is selected.
 
 ### Changed
-- Notification mails from every Amazon sender on a configured domain are accepted (`order-update@`, `shipment-tracking@`, `auto-confirm@`, `ship-confirm@`, `delivery-update@`), and the IMAP search matches the domain; language is derived from the sender's domain.
+- Notification mails from every non-marketing sender on a configured domain are accepted — Amazon localises the local part per marketplace (`order-update@amazon.de`, `verzending-volgen@amazon.nl`, `shipment-tracking@amazon.com`, …) — and the IMAP search matches the domain; language is derived from the sender's domain.
 - Error logs use `%r` so exceptions without a message (e.g. `CommandTimeout`) are still identifiable.
 - `requirements`: `aioimaplib>=2.0.0`.
 
