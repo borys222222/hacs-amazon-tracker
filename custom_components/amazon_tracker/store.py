@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -16,6 +16,23 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _parse_timestamp(value: Any, fallback: datetime) -> datetime:
+    """Parse an ISO timestamp into an aware UTC datetime.
+
+    Mail dates come with a timezone, timestamps written by the parser's fallback
+    (``datetime.now().isoformat()``) do not; mixing them raised
+    ``TypeError: can't subtract offset-naive and offset-aware datetimes`` on every
+    setup once a real mail had been stored. Naive values are taken as local time.
+    """
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return fallback
+    if parsed.tzinfo is None:
+        parsed = parsed.astimezone()
+    return parsed.astimezone(timezone.utc)
 
 
 class PackageStore:
@@ -116,17 +133,11 @@ class PackageStore:
             show_delivered: Whether to include delivered packages.
             delivered_duration: How long to show delivered packages (days).
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         result: dict[str, dict[str, Any]] = {}
 
         for order_number, pkg in self._packages.items():
-            last_updated_str = pkg.get("last_updated", "")
-            try:
-                last_updated = datetime.fromisoformat(last_updated_str)
-            except (ValueError, TypeError):
-                last_updated = now
-
-            age = now - last_updated
+            age = now - _parse_timestamp(pkg.get("last_updated", ""), now)
 
             # Skip packages older than tracking duration
             if age > timedelta(days=tracking_duration):
@@ -148,17 +159,11 @@ class PackageStore:
 
         Returns number of removed packages.
         """
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         to_remove: list[str] = []
 
         for order_number, pkg in self._packages.items():
-            last_updated_str = pkg.get("last_updated", "")
-            try:
-                last_updated = datetime.fromisoformat(last_updated_str)
-            except (ValueError, TypeError):
-                last_updated = now
-
-            if now - last_updated > timedelta(days=max_age_days):
+            if now - _parse_timestamp(pkg.get("last_updated", ""), now) > timedelta(days=max_age_days):
                 to_remove.append(order_number)
 
         for order_number in to_remove:

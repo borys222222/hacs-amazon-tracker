@@ -191,3 +191,23 @@ class TestPackageStore:
         packages = [_make_package(order_number=f"{i:03d}-{i:07d}-{i:07d}") for i in range(1, 6)]
         self.store.merge_packages(packages)
         assert len(self.store.packages) == 5
+
+
+class TestAwareTimestamps:
+    """Mail dates are timezone-aware; the store must not mix them with naive now()."""
+
+    def _store(self):
+        with patch("custom_components.amazon_tracker.store.Store"):
+            return PackageStore(MagicMock(), "entry")
+
+    def test_aware_and_naive_timestamps_coexist(self):
+        store = self._store()
+        aware = _make_package(order_number="111-1111111-1111111", last_updated="2026-09-14T11:57:38+00:00")
+        naive = _make_package(order_number="222-2222222-2222222", last_updated=datetime.now().isoformat())
+        old = _make_package(order_number="333-3333333-3333333", last_updated="2020-01-01T00:00:00+02:00")
+        store.merge_packages([aware, naive, old])
+        # the date above is fixed; relative to a far-future "today" it would age out, so only
+        # assert the call works and the ancient one is filtered
+        active = store.get_active_packages(tracking_duration=36500)
+        assert set(active) == {"111-1111111-1111111", "222-2222222-2222222", "333-3333333-3333333"}
+        assert store.cleanup_old_packages(max_age_days=365) == 1
