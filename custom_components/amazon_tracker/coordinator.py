@@ -96,7 +96,7 @@ class AmazonTrackerCoordinator(DataUpdateCoordinator):
             await self._imap_client.start_idle()
 
         except Exception as err:
-            _LOGGER.error("Failed to initialize IMAP: %s", err)
+            _LOGGER.error("Failed to initialize IMAP: %r", err)
             # Continue without IMAP - will retry on next update
 
         # Set initial data

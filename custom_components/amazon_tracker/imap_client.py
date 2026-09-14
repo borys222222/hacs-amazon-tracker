@@ -104,7 +104,7 @@ class ImapClient:
             _LOGGER.info("Connected to IMAP server %s", self._server)
 
         except Exception as err:
-            _LOGGER.error("Failed to connect to IMAP server: %s", err)
+            _LOGGER.error("Failed to connect to IMAP server %s: %r", self._server, err)
             self._client = None
             raise
 
