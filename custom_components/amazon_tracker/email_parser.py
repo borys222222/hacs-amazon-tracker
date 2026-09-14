@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import email
 from email.message import EmailMessage
 import email.policy
@@ -175,6 +175,27 @@ class AmazonEmailParser:
 
     def _extract_delivery_date(self, body: str) -> str | None:
         """Extract estimated delivery date from email body."""
+        # Relative phrases first ("Arriving today", "Delivery tomorrow", "Arriving Monday") —
+        # the amazon.nl / amazon.com notification mails carry no absolute date at all.
+        today = date.today()
+        relative = re.search(
+            r"(?:[Aa]rriving|[Dd]elivery|[Dd]elivered|[Ll]ieferung|[Zz]ustellung|[Bb]ezorging|[Kk]omt)\s+"
+            r"(?:by\s+|on\s+|am\s+|op\s+)?"
+            r"(today|tomorrow|heute|morgen|vandaag|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            body,
+            re.IGNORECASE,
+        )
+        if relative:
+            word = relative.group(1).lower()
+            if word in ("today", "heute", "vandaag"):
+                return today.isoformat()
+            if word in ("tomorrow", "morgen"):
+                return (today + timedelta(days=1)).isoformat()
+            weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            if word in weekdays:
+                ahead = (weekdays.index(word) - today.weekday()) % 7 or 7
+                return (today + timedelta(days=ahead)).isoformat()
+
         # German date patterns
         date_patterns = [
             # "Zustellung am Montag, 15. Januar"
@@ -296,11 +317,13 @@ class AmazonEmailParser:
             # Common Amazon email format
             r"(?:Artikel|Item|Article|Producto):\s*(.+?)(?:\n|$)",
             r"(?:Produktname|Product name|Nom du produit):\s*(.+?)(?:\n|$)",
+            # Bulleted item list ("* Just for Men ... M45" followed by "Quantity: 5")
+            r"^[ \t]*[\*•-][ \t]+([^\n*]{5,150}?)[ \t]*$",
             # Quoted product names
             r'"([^"]{5,100})"',
         ]
         for pattern in patterns:
-            match = re.search(pattern, body)
+            match = re.search(pattern, body, re.MULTILINE)
             if match:
                 name = match.group(1).strip()
                 if len(name) > 5:

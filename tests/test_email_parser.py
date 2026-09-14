@@ -327,3 +327,45 @@ class TestSenderWhitelist:
         assert parser._get_language_for_sender("shipment-tracking@amazon.de") == "de"
         assert parser._get_language_for_sender("Amazon <auto-confirm@amazon.nl>") == "nl"
         assert parser._get_language_for_sender("nobody@example.com") == "en"
+
+
+class TestAmazonNlNotificationMail:
+    """Real amazon.nl 'out for delivery' mail (English account language), 2026-09."""
+
+    BODY = (
+        "Your Orders\n\n    Your package is out for delivery!\nOrdered\n\nDispatched\n\nOut for delivery\n\n"
+        "Delivered\n\nArriving today\n\nTomasz \u2013 AMSTERDAM, Noord-Holland\n\nOrder #\n408-9156604-2496332\n\n"
+        "Track package\nhttps://www.amazon.nl/progress-tracker/package?_encoding=UTF8&orderId=408-9156604-2496332"
+        "&packageIndex=0&shipmentId=TwFjwgvrw&vt=NOTIFICATIONS&ref_=p_btn_fed_track_package\n\n"
+        "* Just for Men Mustache and Beard Hair Color Dark Brown M45\n  Quantity: 5\n"
+    )
+
+    def _mail(self):
+        from email.message import EmailMessage
+
+        msg = EmailMessage()
+        msg["From"] = '"Amazon.nl" <verzending-volgen@amazon.nl>'
+        msg["To"] = "someone@example.com"
+        msg["Subject"] = "Out for delivery: 5 \u2018Just for Men Mustache and...\u2019"
+        msg["Date"] = "Mon, 14 Sep 2026 11:57:38 +0000"
+        msg.set_content(self.BODY)
+        msg.add_alternative("<html><body>" + self.BODY.replace("\n", "<br>") + "</body></html>", subtype="html")
+        return msg.as_bytes()
+
+    def test_parses_status_date_and_product(self):
+        from datetime import date
+
+        result = AmazonEmailParser(["amazon.nl"]).parse_email(self._mail())
+        assert result is not None
+        assert result["order_number"] == "408-9156604-2496332"
+        assert result["status"] == "out_for_delivery"
+        assert result["estimated_delivery"] == date.today().isoformat()
+        assert result["product_name"] == "Just for Men Mustache and Beard Hair Color Dark Brown M45"
+
+    def test_relative_tomorrow_and_weekday(self):
+        from datetime import date, timedelta
+
+        parser = AmazonEmailParser(["amazon.nl"])
+        assert parser._extract_delivery_date("Arriving tomorrow\n") == (date.today() + timedelta(days=1)).isoformat()
+        weekday = parser._extract_delivery_date("Delivery by Friday\n")
+        assert weekday is not None and date.fromisoformat(weekday) > date.today()

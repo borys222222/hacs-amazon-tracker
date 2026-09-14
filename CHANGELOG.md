@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Notification mails from every non-marketing sender on a configured domain are accepted — Amazon localises the local part per marketplace (`order-update@amazon.de`, `verzending-volgen@amazon.nl`, `shipment-tracking@amazon.com`, …) — and the IMAP search matches the domain; language is derived from the sender's domain.
 - Error logs use `%r` so exceptions without a message (e.g. `CommandTimeout`) are still identifiable.
+- Delivery date: relative phrases ("Arriving today/tomorrow/<weekday>", German/Dutch equivalents) are understood — the amazon.nl/.com notification mails carry no absolute date. Product name: bulleted item lines (`* <product>` / `Quantity:`) are recognised.
 - `requirements`: `aioimaplib>=2.0.0`.
 
 ## [1.2.0] - 2026-08-08
