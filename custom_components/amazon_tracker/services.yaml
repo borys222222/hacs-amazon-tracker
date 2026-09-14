@@ -1,0 +1,15 @@
+scan_now:
+  name: Scan mailbox now
+  description: Re-scan the mailbox for Amazon notification mails (within the tracking duration).
+
+remove_package:
+  name: Remove package
+  description: Stop tracking one package.
+  fields:
+    order_number:
+      name: Order number
+      description: The Amazon order number (123-1234567-1234567).
+      required: true
+      example: "406-1234567-1234567"
+      selector:
+        text:

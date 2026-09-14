@@ -33,8 +33,11 @@ class ImapClient:
     coroutine returning a future that completes when the server acknowledges DONE,
     ``wait_server_push()`` is a coroutine, and ``idle_done()`` is a plain synchronous call.
     Any other command sent while an IDLE is pending is not answered by the server until
-    DONE, so every SEARCH/FETCH first leaves IDLE and takes ``_command_lock``; the IDLE
-    loop holds the same lock for the duration of one IDLE cycle.
+    DONE, so SEARCH/FETCH and the IDLE loop share ``_command_lock``. A command announces
+    itself with ``_pause_requested`` and wakes a waiting IDLE loop through
+    ``stop_wait_server_push()`` (``idle_done()`` alone never wakes ``wait_server_push()``);
+    the loop then sends DONE, releases the lock and stays out of IDLE until the command
+    is finished. Only the loop ever calls ``idle_done()``.
     """
 
     def __init__(
@@ -62,6 +65,8 @@ class ImapClient:
         self._client: aioimaplib.IMAP4_SSL | aioimaplib.IMAP4 | None = None
         self._idle_task: asyncio.Task | None = None
         self._idle_future: asyncio.Future | None = None
+        self._idle_waiting = False
+        self._pause_requested = 0
         self._command_lock = asyncio.Lock()
         self._running = False
         self._backoff = INITIAL_BACKOFF
@@ -117,7 +122,7 @@ class ImapClient:
 
         if self._client:
             try:
-                await self._stop_idle()
+                await self._finish_idle()
                 await self._client.logout()
             except Exception:
                 pass
@@ -130,21 +135,49 @@ class ImapClient:
         self._running = True
         self._idle_task = asyncio.create_task(self._idle_loop())
 
-    async def _stop_idle(self) -> None:
-        """Leave IDLE (if pending) and wait for the server to acknowledge DONE.
+    async def _finish_idle(self) -> None:
+        """Send DONE for a pending IDLE and wait for the server to acknowledge it.
 
-        Safe to call from any task and when no IDLE is pending.
+        Called by the IDLE loop (and by disconnect) only, so DONE is never sent twice.
         """
         client = self._client
         if client is not None and client.has_pending_idle():
             client.idle_done()
         future = self._idle_future
+        self._idle_future = None
         if future is not None:
-            self._idle_future = None
             try:
                 await asyncio.wait_for(future, IDLE_STOP_TIMEOUT)
             except Exception as err:  # noqa: BLE001 - never let a stale IDLE block a command
-                _LOGGER.debug("IDLE did not stop cleanly: %s", err)
+                _LOGGER.debug("IDLE did not stop cleanly: %r", err)
+
+    async def _acquire_for_command(self) -> None:
+        """Take the command lock, waking the IDLE loop out of IDLE if it holds the lock.
+
+        The caller must release the lock with ``_release_command()`` afterwards.
+        """
+        self._pause_requested += 1
+        try:
+            while True:
+                client = self._client
+                if self._idle_waiting and client is not None:
+                    try:
+                        await client.stop_wait_server_push()
+                    except Exception as err:  # noqa: BLE001
+                        _LOGGER.debug("Could not wake IDLE loop: %r", err)
+                try:
+                    await asyncio.wait_for(self._command_lock.acquire(), 1.0)
+                    return
+                except asyncio.TimeoutError:
+                    continue
+        except BaseException:
+            self._pause_requested -= 1
+            raise
+
+    def _release_command(self) -> None:
+        """Release the command lock taken by ``_acquire_for_command``."""
+        self._command_lock.release()
+        self._pause_requested -= 1
 
     @staticmethod
     def _has_new_mail(msg: Any) -> bool:
@@ -167,14 +200,23 @@ class ImapClient:
                     if not self._client:
                         continue
 
+                if self._pause_requested:
+                    # a command is running or waiting; stay out of IDLE
+                    await asyncio.sleep(0.2)
+                    continue
+
                 async with self._command_lock:
-                    if not self._client:
+                    if not self._client or self._pause_requested:
                         continue
                     self._idle_future = await self._client.idle_start(timeout=IDLE_TIMEOUT)
-                    # Returns on a server push, on the IDLE timeout, or when another
-                    # task called idle_done() to run a command.
-                    msg = await self._client.wait_server_push()
-                    await self._stop_idle()
+                    # Returns on a server push, on the IDLE timeout, or when a command
+                    # woke us with stop_wait_server_push().
+                    self._idle_waiting = True
+                    try:
+                        msg = await self._client.wait_server_push()
+                    finally:
+                        self._idle_waiting = False
+                    await self._finish_idle()
 
                 if self._has_new_mail(msg):
                     _LOGGER.debug("New email detected via IDLE")
@@ -184,9 +226,10 @@ class ImapClient:
                 _LOGGER.debug("IDLE loop cancelled")
                 return
             except Exception as err:
-                _LOGGER.warning("IDLE loop error: %s", err)
+                _LOGGER.warning("IDLE loop error: %r", err)
                 self._client = None
                 self._idle_future = None
+                self._idle_waiting = False
                 if self._running:
                     await self._reconnect()
 
@@ -194,8 +237,8 @@ class ImapClient:
         """Run one SEARCH + FETCH pass outside IDLE; caller handles exceptions."""
         query = build_imap_search_query(self._domains, since_date)
 
-        await self._stop_idle()
-        async with self._command_lock:
+        await self._acquire_for_command()
+        try:
             if not self._client:
                 return []
             response = await self._client.search(query)
@@ -219,6 +262,8 @@ class ImapClient:
                             if pkg:
                                 packages.append(pkg)
             return packages
+        finally:
+            self._release_command()
 
     async def _fetch_new_emails(self) -> None:
         """Fetch and parse new emails."""
@@ -264,6 +309,7 @@ class ImapClient:
                     pass
                 self._client = None
             self._idle_future = None
+            self._idle_waiting = False
 
             await self.connect()
         except Exception as err:

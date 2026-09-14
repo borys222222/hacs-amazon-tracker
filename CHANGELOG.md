@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **aioimaplib 2.x compatibility** (Home Assistant 2025.x/2026.x ship 2.0.1): the IDLE loop awaited the synchronous `idle_done()` and crashed with `'NoneType' object can't be awaited` on every server push, so new mails were never picked up; it now uses the future returned by `idle_start()` and calls `idle_done()` synchronously.
-- SEARCH/FETCH were issued while an IDLE was pending; the server does not answer until DONE, so `scan_now` and reconnect scans failed with an empty `CommandTimeout`. Every command now leaves IDLE first and runs under a lock shared with the IDLE loop.
+- SEARCH/FETCH were issued while an IDLE was pending; the server does not answer until DONE, so `scan_now` and reconnect scans failed with an empty `CommandTimeout`. Commands now wake the IDLE loop (`stop_wait_server_push()` — `idle_done()` alone never wakes `wait_server_push()`), the loop sends DONE and stays out of IDLE until the command has finished; a lock serialises the connection.
+- `services.yaml` added (`scan_now`, `remove_package`), which also removes the "Failed to load services.yaml" error at startup.
 - Config and options flows could not be rendered by Home Assistant's form serializer (`vol.All([vol.In(...)])`) → "Unknown error occurred" after the IMAP step. Both flows now use `cv.multi_select` and validate that at least one domain is selected.
 
 ### Changed

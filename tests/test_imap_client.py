@@ -225,25 +225,54 @@ class TestIdleAioimaplib2:
         assert self.client._client is mock_imap
 
     @pytest.mark.asyncio
-    async def test_search_leaves_idle_first(self):
+    async def test_search_wakes_idle_loop_and_waits_for_the_lock(self):
+        """A command must wake a waiting IDLE loop (idle_done alone never does) and only
+        run once the loop has sent DONE and released the lock."""
         loop = asyncio.get_running_loop()
-        idle_future = loop.create_future()
-        idle_future.set_result(None)
         order = []
+        woken = asyncio.Event()
         mock_imap = AsyncMock()
-        mock_imap.has_pending_idle = MagicMock(return_value=True)
-        mock_imap.idle_done = MagicMock(side_effect=lambda: order.append("idle_done"))
+
+        async def idle_start(timeout=0):
+            order.append("idle_start")
+            return loop.create_future()
+
+        async def wait_server_push():
+            await woken.wait()  # a real IDLE blocks until a push or stop_wait_server_push()
+            return [b"stop_wait_server_push"]
+
+        async def stop_wait_server_push():
+            order.append("wake")
+            woken.set()
+            return True
+
+        def idle_done():
+            order.append("idle_done")
+            self.client._idle_future.set_result(None)
 
         async def search(*_a, **_k):
             order.append("search")
             return _response("OK", [b""])
 
+        mock_imap.idle_start = idle_start
+        mock_imap.wait_server_push = wait_server_push
+        mock_imap.stop_wait_server_push = stop_wait_server_push
+        mock_imap.idle_done = MagicMock(side_effect=idle_done)
+        mock_imap.has_pending_idle = MagicMock(side_effect=lambda: "idle_done" not in order)
         mock_imap.search = search
         self.client._client = mock_imap
-        self.client._idle_future = idle_future
+        self.client._running = True
+        loop_task = asyncio.create_task(self.client._idle_loop())
+        await asyncio.sleep(0.05)  # the loop now sits in wait_server_push holding the lock
 
-        result = await self.client.fetch_existing_emails(since_days=1)
+        result = await asyncio.wait_for(self.client.fetch_existing_emails(since_days=1), 5)
 
         assert result == []
-        assert order == ["idle_done", "search"]
-        assert self.client._idle_future is None
+        assert order[:4] == ["idle_start", "wake", "idle_done", "search"]
+        assert self.client._pause_requested == 0
+        self.client._running = False
+        loop_task.cancel()
+        try:
+            await loop_task
+        except asyncio.CancelledError:
+            pass
