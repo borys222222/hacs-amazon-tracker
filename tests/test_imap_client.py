@@ -276,3 +276,27 @@ class TestIdleAioimaplib2:
             await loop_task
         except asyncio.CancelledError:
             pass
+
+
+class TestFetchLiteralTypes:
+    """aioimaplib 2.x hands the RFC822 literal over as a bytearray; it must still be parsed."""
+
+    @pytest.mark.asyncio
+    async def test_bytearray_literal_is_parsed(self):
+        client = ImapClient(server="imap.example.com", port=993, email_addr="u@example.com",
+                            password="x", domains=["amazon.de"])
+        raw = (
+            b"From: order-update@amazon.de\r\nSubject: Versandt: Bestellung 123-4567890-1234567\r\n"
+            b"Date: Mon, 10 Feb 2025 14:30:00 +0100\r\nContent-Type: text/plain\r\n\r\n"
+            b"Ihr Paket wurde mit DHL Trackingnummer 123456789012 versandt. Vielen Dank fuer Ihren Einkauf bei Amazon.\r\n"
+        )
+        mock_imap = AsyncMock()
+        mock_imap.has_pending_idle = MagicMock(return_value=False)
+        mock_imap.search = AsyncMock(return_value=_response("OK", [b"7"]))
+        mock_imap.fetch = AsyncMock(return_value=_response("OK", [b"7 FETCH (RFC822 {%d}" % len(raw), bytearray(raw), b")", b"FETCH completed"]))
+        client._client = mock_imap
+
+        packages = await client.fetch_existing_emails(since_days=1)
+
+        assert len(packages) == 1
+        assert packages[0]["order_number"] == "123-4567890-1234567"

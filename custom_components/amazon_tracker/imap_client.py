@@ -257,10 +257,12 @@ class ImapClient:
                 fetch_response = await self._client.fetch(msg_id_str, "(RFC822)")
                 if fetch_response.result == "OK":
                     for line in fetch_response.lines:
-                        if isinstance(line, bytes) and len(line) > 100:
-                            pkg = self._parser.parse_email(line)
+                        # aioimaplib 2.x delivers the RFC822 literal as a bytearray, not bytes
+                        if isinstance(line, (bytes, bytearray)) and len(line) > 100:
+                            pkg = self._parser.parse_email(bytes(line))
                             if pkg:
                                 packages.append(pkg)
+            _LOGGER.debug("Scanned %d message(s), %d package(s)", len(message_ids), len(packages))
             return packages
         finally:
             self._release_command()
