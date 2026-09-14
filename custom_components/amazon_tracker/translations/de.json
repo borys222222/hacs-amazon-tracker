@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "Ungültige IMAP-Anmeldedaten. Bitte überprüfen Sie E-Mail und Passwort.",
             "cannot_connect": "Verbindung zum IMAP-Server nicht möglich. Bitte überprüfen Sie Serveradresse und Port.",
-            "unknown": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut."
+            "unknown": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.",
+            "no_domains": "Mindestens eine Amazon-Domain auswählen"
         },
         "abort": {
             "already_configured": "Dieses E-Mail-Konto ist bereits konfiguriert"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "Mindestens eine Amazon-Domain auswählen"
+        },
         "step": {
             "init": {
                 "title": "Amazon-Einstellungen",

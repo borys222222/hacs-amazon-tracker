@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "Invalid IMAP credentials. Please check your email and password.",
             "cannot_connect": "Unable to connect to the IMAP server. Please check server address and port.",
-            "unknown": "An unexpected error occurred. Please try again later."
+            "unknown": "An unexpected error occurred. Please try again later.",
+            "no_domains": "Select at least one Amazon domain"
         },
         "abort": {
             "already_configured": "This email account is already configured"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "Select at least one Amazon domain"
+        },
         "step": {
             "init": {
                 "title": "Amazon Settings",

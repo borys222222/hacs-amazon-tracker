@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "Ogiltiga IMAP-inloggningsuppgifter. Kontrollera din e-post och ditt lösenord.",
             "cannot_connect": "Det gick inte att ansluta till IMAP-servern. Kontrollera serveradress och port.",
-            "unknown": "Ett oväntat fel inträffade. Försök igen senare."
+            "unknown": "Ett oväntat fel inträffade. Försök igen senare.",
+            "no_domains": "Välj minst en Amazon-domän"
         },
         "abort": {
             "already_configured": "Detta e-postkonto är redan konfigurerat"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "Välj minst en Amazon-domän"
+        },
         "step": {
             "init": {
                 "title": "Amazon-inställningar",

@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "IMAP認証情報が無効です。メールとパスワードを確認してください。",
             "cannot_connect": "IMAPサーバーに接続できません。サーバーアドレスとポートを確認してください。",
-            "unknown": "予期しないエラーが発生しました。後でもう一度お試しください。"
+            "unknown": "予期しないエラーが発生しました。後でもう一度お試しください。",
+            "no_domains": "少なくとも1つのAmazonドメインを選択してください"
         },
         "abort": {
             "already_configured": "このメールアカウントはすでに設定されています"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "少なくとも1つのAmazonドメインを選択してください"
+        },
         "step": {
             "init": {
                 "title": "Amazon設定",

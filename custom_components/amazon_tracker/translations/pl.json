@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "Nieprawidłowe dane logowania IMAP. Sprawdź swój e-mail i hasło.",
             "cannot_connect": "Nie można połączyć się z serwerem IMAP. Sprawdź adres serwera i port.",
-            "unknown": "Wystąpił nieoczekiwany błąd. Spróbuj ponownie później."
+            "unknown": "Wystąpił nieoczekiwany błąd. Spróbuj ponownie później.",
+            "no_domains": "Wybierz co najmniej jedną domenę Amazon"
         },
         "abort": {
             "already_configured": "To konto e-mail jest już skonfigurowane"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "Wybierz co najmniej jedną domenę Amazon"
+        },
         "step": {
             "init": {
                 "title": "Ustawienia Amazon",

@@ -28,6 +28,16 @@ DEFAULT_SHOW_DELIVERED = True
 DEFAULT_DELIVERED_DURATION = 3  # days
 
 # Amazon Domains with email senders
+# Local parts Amazon uses for order/shipping notifications, accepted on every
+# configured domain (the per-domain "sender" below is kept as the primary one).
+AMAZON_SENDER_LOCALPARTS = (
+    "order-update",
+    "shipment-tracking",
+    "auto-confirm",
+    "ship-confirm",
+    "delivery-update",
+)
+
 AMAZON_DOMAINS = {
     "amazon.com": {
         "name": "Amazon.com (United States)",

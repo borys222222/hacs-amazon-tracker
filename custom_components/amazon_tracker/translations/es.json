@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "Credenciales IMAP inválidas. Por favor, verifique su correo electrónico y contraseña.",
             "cannot_connect": "No se puede conectar al servidor IMAP. Por favor, verifique la dirección y el puerto del servidor.",
-            "unknown": "Se ha producido un error inesperado. Por favor, inténtelo de nuevo más tarde."
+            "unknown": "Se ha producido un error inesperado. Por favor, inténtelo de nuevo más tarde.",
+            "no_domains": "Selecciona al menos un dominio de Amazon"
         },
         "abort": {
             "already_configured": "Esta cuenta de correo electrónico ya está configurada"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "Selecciona al menos un dominio de Amazon"
+        },
         "step": {
             "init": {
                 "title": "Configuración de Amazon",

@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .const import (
@@ -88,6 +89,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_amazon(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Step 2: Amazon settings."""
+        errors: dict[str, str] = {}
+        if user_input is not None and not user_input.get(CONF_AMAZON_DOMAINS):
+            errors["base"] = "no_domains"
+            user_input = None
+
         if user_input is not None:
             # Set unique ID based on IMAP email
             await self.async_set_unique_id(self._imap_data[CONF_IMAP_EMAIL])
@@ -113,12 +119,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="amazon",
+            errors=errors,
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_AMAZON_DOMAINS, default=[DEFAULT_DOMAIN]): vol.All(
-                        [vol.In(domain_options)],
-                        vol.Length(min=1),
-                    ),
+                    vol.Required(CONF_AMAZON_DOMAINS, default=[DEFAULT_DOMAIN]): cv.multi_select(domain_options),
                     vol.Required(
                         CONF_TRACKING_DURATION,
                         default=DEFAULT_TRACKING_DURATION,
@@ -153,8 +157,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle options flow."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            if not user_input.get(CONF_AMAZON_DOMAINS):
+                errors["base"] = "no_domains"
+            else:
+                return self.async_create_entry(title="", data=user_input)
 
         domain_options = {domain: config["name"] for domain, config in AMAZON_DOMAINS.items()}
 
@@ -165,12 +173,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
+            errors=errors,
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_AMAZON_DOMAINS, default=current_domains): vol.All(
-                        [vol.In(domain_options)],
-                        vol.Length(min=1),
-                    ),
+                    vol.Required(CONF_AMAZON_DOMAINS, default=current_domains): cv.multi_select(domain_options),
                     vol.Required(CONF_TRACKING_DURATION, default=current_tracking): vol.All(
                         int, vol.Range(min=1, max=90)
                     ),

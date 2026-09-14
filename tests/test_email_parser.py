@@ -284,14 +284,14 @@ class TestBuildImapSearchQuery:
     def test_single_domain(self):
         """Test query with single domain."""
         query = build_imap_search_query(["amazon.de"], date(2025, 1, 1))
-        assert "order-update@amazon.de" in query
+        assert 'FROM "@amazon.de"' in query
         assert "SINCE" in query
 
     def test_multiple_domains(self):
         """Test query with multiple domains."""
         query = build_imap_search_query(["amazon.de", "amazon.com"], date(2025, 1, 1))
-        assert "order-update@amazon.de" in query
-        assert "order-update@amazon.com" in query
+        assert 'FROM "@amazon.de"' in query
+        assert 'FROM "@amazon.com"' in query
         assert "OR" in query
 
     def test_since_date_format(self):
@@ -303,3 +303,24 @@ class TestBuildImapSearchQuery:
         """Test that unknown domains are silently ignored."""
         query = build_imap_search_query(["amazon.invalid"], date(2025, 1, 1))
         assert "SINCE" in query
+
+
+class TestSenderWhitelist:
+    """Every Amazon notification local part on a configured domain is accepted."""
+
+    def test_shipment_tracking_sender_accepted(self):
+        parser = AmazonEmailParser(["amazon.nl"])
+        assert parser._is_valid_sender("Amazon.nl <shipment-tracking@amazon.nl>")
+        assert parser._is_valid_sender("order-update@amazon.nl")
+
+    def test_marketing_and_foreign_senders_rejected(self):
+        parser = AmazonEmailParser(["amazon.nl"])
+        assert not parser._is_valid_sender("store-news@amazon.nl")
+        assert not parser._is_valid_sender("order-update@amazon.de")
+        assert not parser._is_valid_sender("order-update@amazon.nl.evil.example")
+
+    def test_language_follows_domain_not_local_part(self):
+        parser = AmazonEmailParser(["amazon.de", "amazon.nl"])
+        assert parser._get_language_for_sender("shipment-tracking@amazon.de") == "de"
+        assert parser._get_language_for_sender("Amazon <auto-confirm@amazon.nl>") == "nl"
+        assert parser._get_language_for_sender("nobody@example.com") == "en"

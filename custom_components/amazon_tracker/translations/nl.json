@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "Ongeldige IMAP-inloggegevens. Controleer uw e-mail en wachtwoord.",
             "cannot_connect": "Kan geen verbinding maken met de IMAP-server. Controleer het serveradres en de poort.",
-            "unknown": "Er is een onverwachte fout opgetreden. Probeer het later opnieuw."
+            "unknown": "Er is een onverwachte fout opgetreden. Probeer het later opnieuw.",
+            "no_domains": "Selecteer minstens één Amazon-domein"
         },
         "abort": {
             "already_configured": "Dit e-mailaccount is al geconfigureerd"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "Selecteer minstens één Amazon-domein"
+        },
         "step": {
             "init": {
                 "title": "Amazon-instellingen",

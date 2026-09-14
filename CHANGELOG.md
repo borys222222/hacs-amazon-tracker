@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-09-14
+
+### Fixed
+- **aioimaplib 2.x compatibility** (Home Assistant 2025.x/2026.x ship 2.0.1): the IDLE loop awaited the synchronous `idle_done()` and crashed with `'NoneType' object can't be awaited` on every server push, so new mails were never picked up; it now uses the future returned by `idle_start()` and calls `idle_done()` synchronously.
+- SEARCH/FETCH were issued while an IDLE was pending; the server does not answer until DONE, so `scan_now` and reconnect scans failed with an empty `CommandTimeout`. Every command now leaves IDLE first and runs under a lock shared with the IDLE loop.
+- Config and options flows could not be rendered by Home Assistant's form serializer (`vol.All([vol.In(...)])`) → "Unknown error occurred" after the IMAP step. Both flows now use `cv.multi_select` and validate that at least one domain is selected.
+
+### Changed
+- Notification mails from every Amazon sender on a configured domain are accepted (`order-update@`, `shipment-tracking@`, `auto-confirm@`, `ship-confirm@`, `delivery-update@`), and the IMAP search matches the domain; language is derived from the sender's domain.
+- Error logs use `%r` so exceptions without a message (e.g. `CommandTimeout`) are still identifiable.
+- `requirements`: `aioimaplib>=2.0.0`.
+
 ## [1.2.0] - 2026-08-08
 
 ### Added

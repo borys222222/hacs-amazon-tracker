@@ -18,13 +18,24 @@ _LOGGER = logging.getLogger(__name__)
 # IMAP IDLE timeout - RFC recommends <30 minutes
 IDLE_TIMEOUT = 29 * 60  # 29 minutes in seconds
 
+# How long to wait for the server to acknowledge DONE after idle_done()
+IDLE_STOP_TIMEOUT = 10  # seconds
+
 # Reconnect backoff
 INITIAL_BACKOFF = 30  # seconds
 MAX_BACKOFF = 600  # 10 minutes
 
 
 class ImapClient:
-    """IMAP client with IDLE support for push notifications."""
+    """IMAP client with IDLE support for push notifications.
+
+    aioimaplib 2.x semantics (the version Home Assistant ships): ``idle_start()`` is a
+    coroutine returning a future that completes when the server acknowledges DONE,
+    ``wait_server_push()`` is a coroutine, and ``idle_done()`` is a plain synchronous call.
+    Any other command sent while an IDLE is pending is not answered by the server until
+    DONE, so every SEARCH/FETCH first leaves IDLE and takes ``_command_lock``; the IDLE
+    loop holds the same lock for the duration of one IDLE cycle.
+    """
 
     def __init__(
         self,
@@ -50,6 +61,8 @@ class ImapClient:
 
         self._client: aioimaplib.IMAP4_SSL | aioimaplib.IMAP4 | None = None
         self._idle_task: asyncio.Task | None = None
+        self._idle_future: asyncio.Future | None = None
+        self._command_lock = asyncio.Lock()
         self._running = False
         self._backoff = INITIAL_BACKOFF
 
@@ -104,6 +117,7 @@ class ImapClient:
 
         if self._client:
             try:
+                await self._stop_idle()
                 await self._client.logout()
             except Exception:
                 pass
@@ -116,6 +130,34 @@ class ImapClient:
         self._running = True
         self._idle_task = asyncio.create_task(self._idle_loop())
 
+    async def _stop_idle(self) -> None:
+        """Leave IDLE (if pending) and wait for the server to acknowledge DONE.
+
+        Safe to call from any task and when no IDLE is pending.
+        """
+        client = self._client
+        if client is not None and client.has_pending_idle():
+            client.idle_done()
+        future = self._idle_future
+        if future is not None:
+            self._idle_future = None
+            try:
+                await asyncio.wait_for(future, IDLE_STOP_TIMEOUT)
+            except Exception as err:  # noqa: BLE001 - never let a stale IDLE block a command
+                _LOGGER.debug("IDLE did not stop cleanly: %s", err)
+
+    @staticmethod
+    def _has_new_mail(msg: Any) -> bool:
+        """Return True if an IDLE push announced new messages."""
+        if not isinstance(msg, (list, tuple)):
+            return False
+        for line in msg:
+            if isinstance(line, bytes):
+                line = line.decode("utf-8", errors="replace")
+            if "EXISTS" in str(line) or "RECENT" in str(line):
+                return True
+        return False
+
     async def _idle_loop(self) -> None:
         """IMAP IDLE loop - waits for new emails."""
         while self._running:
@@ -125,21 +167,18 @@ class ImapClient:
                     if not self._client:
                         continue
 
-                await self._client.idle_start(timeout=IDLE_TIMEOUT)
+                async with self._command_lock:
+                    if not self._client:
+                        continue
+                    self._idle_future = await self._client.idle_start(timeout=IDLE_TIMEOUT)
+                    # Returns on a server push, on the IDLE timeout, or when another
+                    # task called idle_done() to run a command.
+                    msg = await self._client.wait_server_push()
+                    await self._stop_idle()
 
-                # Wait for IDLE to complete (new mail or timeout)
-                msg = await self._client.wait_server_push()
-
-                await self._client.idle_done()
-
-                # Check if we got new messages
-                for line in msg:
-                    if isinstance(line, bytes):
-                        line = line.decode("utf-8", errors="replace")
-                    if "EXISTS" in str(line) or "RECENT" in str(line):
-                        _LOGGER.debug("New email detected via IDLE")
-                        await self._fetch_new_emails()
-                        break
+                if self._has_new_mail(msg):
+                    _LOGGER.debug("New email detected via IDLE")
+                    await self._fetch_new_emails()
 
             except asyncio.CancelledError:
                 _LOGGER.debug("IDLE loop cancelled")
@@ -147,62 +186,26 @@ class ImapClient:
             except Exception as err:
                 _LOGGER.warning("IDLE loop error: %s", err)
                 self._client = None
+                self._idle_future = None
                 if self._running:
                     await self._reconnect()
 
-    async def _fetch_new_emails(self) -> None:
-        """Fetch and parse new emails."""
-        if not self._client:
-            return
+    async def _search_and_parse(self, since_date: date, limit: int | None = None) -> list[dict[str, Any]]:
+        """Run one SEARCH + FETCH pass outside IDLE; caller handles exceptions."""
+        query = build_imap_search_query(self._domains, since_date)
 
-        try:
-            since_date = date.today() - timedelta(days=1)
-            query = build_imap_search_query(self._domains, since_date)
-
-            response = await self._client.search(query)
-            if response.result != "OK":
-                _LOGGER.warning("IMAP search failed: %s", response.result)
-                return
-
-            message_ids = response.lines[0].split()
-            if not message_ids:
-                return
-
-            # Only fetch the last few messages (most recent)
-            recent_ids = message_ids[-10:]
-
-            packages = []
-            for msg_id in recent_ids:
-                msg_id_str = msg_id if isinstance(msg_id, str) else msg_id.decode()
-                fetch_response = await self._client.fetch(msg_id_str, "(RFC822)")
-                if fetch_response.result == "OK":
-                    for line in fetch_response.lines:
-                        if isinstance(line, bytes) and len(line) > 100:
-                            pkg = self._parser.parse_email(line)
-                            if pkg:
-                                packages.append(pkg)
-
-            if packages and self._on_new_packages:
-                self._on_new_packages(packages)
-
-        except Exception as err:
-            _LOGGER.error("Error fetching new emails: %s", err)
-
-    async def fetch_existing_emails(self, since_days: int = 14) -> list[dict[str, Any]]:
-        """Scan existing emails from the last N days."""
-        if not self._client:
-            return []
-
-        try:
-            since_date = date.today() - timedelta(days=since_days)
-            query = build_imap_search_query(self._domains, since_date)
-
+        await self._stop_idle()
+        async with self._command_lock:
+            if not self._client:
+                return []
             response = await self._client.search(query)
             if response.result != "OK":
                 _LOGGER.warning("IMAP search failed: %s", response.result)
                 return []
 
-            message_ids = response.lines[0].split()
+            message_ids = response.lines[0].split() if response.lines else []
+            if limit is not None:
+                message_ids = message_ids[-limit:]
             _LOGGER.debug("Found %d emails to scan", len(message_ids))
 
             packages = []
@@ -215,12 +218,34 @@ class ImapClient:
                             pkg = self._parser.parse_email(line)
                             if pkg:
                                 packages.append(pkg)
+            return packages
 
+    async def _fetch_new_emails(self) -> None:
+        """Fetch and parse new emails."""
+        if not self._client:
+            return
+
+        try:
+            # Only the last few messages (most recent)
+            packages = await self._search_and_parse(date.today() - timedelta(days=1), limit=10)
+            if packages and self._on_new_packages:
+                self._on_new_packages(packages)
+
+        except Exception as err:
+            _LOGGER.error("Error fetching new emails: %r", err)
+
+    async def fetch_existing_emails(self, since_days: int = 14) -> list[dict[str, Any]]:
+        """Scan existing emails from the last N days."""
+        if not self._client:
+            return []
+
+        try:
+            packages = await self._search_and_parse(date.today() - timedelta(days=since_days))
             _LOGGER.info("Parsed %d packages from existing emails", len(packages))
             return packages
 
         except Exception as err:
-            _LOGGER.error("Error fetching existing emails: %s", err)
+            _LOGGER.error("Error fetching existing emails: %r", err)
             return []
 
     async def _reconnect(self) -> None:
@@ -238,6 +263,7 @@ class ImapClient:
                 except Exception:
                     pass
                 self._client = None
+            self._idle_future = None
 
             await self.connect()
         except Exception as err:

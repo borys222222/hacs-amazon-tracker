@@ -27,13 +27,17 @@
         "error": {
             "invalid_auth": "Credenziali IMAP non valide. Controlla email e password.",
             "cannot_connect": "Impossibile connettersi al server IMAP. Controlla indirizzo e porta del server.",
-            "unknown": "Si è verificato un errore imprevisto. Riprova più tardi."
+            "unknown": "Si è verificato un errore imprevisto. Riprova più tardi.",
+            "no_domains": "Seleziona almeno un dominio Amazon"
         },
         "abort": {
             "already_configured": "Questo account email è già configurato"
         }
     },
     "options": {
+        "error": {
+          "no_domains": "Seleziona almeno un dominio Amazon"
+        },
         "step": {
             "init": {
                 "title": "Impostazioni Amazon",

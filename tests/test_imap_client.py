@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncio
+
 import pytest
 
 from custom_components.amazon_tracker.imap_client import ImapClient
@@ -99,6 +101,7 @@ class TestImapClient:
         """Test disconnection."""
         mock_imap = AsyncMock()
         mock_imap.logout = AsyncMock()
+        mock_imap.has_pending_idle = MagicMock(return_value=False)
         self.client._client = mock_imap
 
         await self.client.disconnect()
@@ -171,3 +174,76 @@ class TestImapClient:
             )
 
         assert result is False
+
+
+def _response(result="OK", lines=None):
+    return MagicMock(result=result, lines=lines if lines is not None else [])
+
+
+class TestIdleAioimaplib2:
+    """aioimaplib 2.x semantics: idle_done() is synchronous, commands must leave IDLE first."""
+
+    def setup_method(self):
+        self.client = ImapClient(
+            server="imap.example.com",
+            port=993,
+            email_addr="user@example.com",
+            password="secret",
+            domains=["amazon.de"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_idle_cycle_does_not_await_idle_done(self):
+        loop = asyncio.get_running_loop()
+        idle_future = loop.create_future()
+        idle_future.set_result(None)
+        mock_imap = AsyncMock()
+        mock_imap.idle_start = AsyncMock(return_value=idle_future)
+        async def push():
+            await asyncio.sleep(0.01)  # a real IDLE suspends; without this the loop never yields
+            return [b"stop_wait_server_push"]
+
+        mock_imap.wait_server_push = push
+        mock_imap.idle_done = MagicMock(return_value=None)
+        pending = {"v": True}
+        mock_imap.has_pending_idle = MagicMock(side_effect=lambda: pending["v"])
+        self.client._client = mock_imap
+        self.client._running = True
+
+        async def stop_after_first_cycle():
+            await asyncio.sleep(0.05)
+            self.client._running = False
+            pending["v"] = False
+
+        stopper = asyncio.create_task(stop_after_first_cycle())
+        await asyncio.wait_for(self.client._idle_loop(), 2)
+        await stopper
+
+        mock_imap.idle_start.assert_awaited()
+        mock_imap.idle_done.assert_called()
+        # a crash would have reset the client to None and gone into reconnect
+        assert self.client._client is mock_imap
+
+    @pytest.mark.asyncio
+    async def test_search_leaves_idle_first(self):
+        loop = asyncio.get_running_loop()
+        idle_future = loop.create_future()
+        idle_future.set_result(None)
+        order = []
+        mock_imap = AsyncMock()
+        mock_imap.has_pending_idle = MagicMock(return_value=True)
+        mock_imap.idle_done = MagicMock(side_effect=lambda: order.append("idle_done"))
+
+        async def search(*_a, **_k):
+            order.append("search")
+            return _response("OK", [b""])
+
+        mock_imap.search = search
+        self.client._client = mock_imap
+        self.client._idle_future = idle_future
+
+        result = await self.client.fetch_existing_emails(since_days=1)
+
+        assert result == []
+        assert order == ["idle_done", "search"]
+        assert self.client._idle_future is None
