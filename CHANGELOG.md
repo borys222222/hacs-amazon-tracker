@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-10-07
+
+### Fixed
+- UK-English subjects ("Dispatched: ...", used by amazon.nl and amazon.co.uk) were not recognised as shipped, so the package stayed "ordered".
+- Product names longer than 150 characters failed the bulleted-item pattern and the parser fell back to a quoted phrase from the legal footer ("Verkauf und Versand durch Amazon"). The cap is 400 characters now; the stored name is still cut at 100.
+
 ## [1.2.1] - 2026-09-14
 
 ### Fixed

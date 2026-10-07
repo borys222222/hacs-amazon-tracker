@@ -369,3 +369,45 @@ class TestAmazonNlNotificationMail:
         assert parser._extract_delivery_date("Arriving tomorrow\n") == (date.today() + timedelta(days=1)).isoformat()
         weekday = parser._extract_delivery_date("Delivery by Friday\n")
         assert weekday is not None and date.fromisoformat(weekday) > date.today()
+
+
+class TestAmazonNlDispatchedLongProduct:
+    """Real amazon.nl 'Dispatched' mail (English account language), 2026-10-04.
+
+    Two misses on the live system: the UK-English subject word "Dispatched" was not a
+    shipped pattern (status stayed "ordered"), and the 166-character product line beat the
+    bullet pattern's 150-character cap, so the quoted phrase in the legal footer won.
+    """
+
+    PRODUCT = (
+        "LocknLock PP Classic Storage Box with Lid and Handles, 16 L, 361 x 274 x 212 mm, "
+        "100% Airtight, Semi-Transparent Storage Box, Storage Box with Lid for Household Items"
+    )
+    BODY = (
+        "Your Orders\n\n    Your package was dispatched!\nOrdered\n\nDispatched\n\nOut for delivery\n\n"
+        "Delivered\n\nArriving tomorrow\n\nTomasz – AMSTERDAM, Noord-Holland\n\nOrder #\n408-1138649-1135513\n\n"
+        "Track package\nhttps://www.amazon.nl/progress-tracker/package?orderId=408-1138649-1135513\n\n"
+        "* " + PRODUCT + "\n  Quantity: 1\n  32.32 EUR\n\nTotal\n32.32 EUR\n\n"
+        'Please direct your request to: * Amazon EU Sarl for products marked with "Verkauf und Versand '
+        'durch Amazon" ("Dispatched from and sold by Amazon"); or to * Amazon EU Sarl\n'
+    )
+
+    def _mail(self):
+        from email.message import EmailMessage
+
+        msg = EmailMessage()
+        msg["From"] = '"Amazon.nl" <verzending-volgen@amazon.nl>'
+        msg["To"] = "someone@example.com"
+        msg["Subject"] = "Dispatched: ‘LocknLock PP Classic...’"
+        msg["Date"] = "Sun, 04 Oct 2026 20:14:21 +0000"
+        msg.set_content(self.BODY)
+        return msg.as_bytes()
+
+    def test_dispatched_is_shipped(self):
+        result = AmazonEmailParser(["amazon.nl"]).parse_email(self._mail())
+        assert result is not None
+        assert result["status"] == "shipped"
+
+    def test_long_bulleted_product_wins_over_legal_quote(self):
+        result = AmazonEmailParser(["amazon.nl"]).parse_email(self._mail())
+        assert result["product_name"] == self.PRODUCT[:100]

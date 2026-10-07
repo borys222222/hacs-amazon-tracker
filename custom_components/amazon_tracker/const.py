@@ -127,6 +127,7 @@ EMAIL_SUBJECTS = {
     "shipped": [
         r"[Vv]ersandt",  # German
         r"[Ss]hipped",  # English
+        r"[Dd]ispatched",  # English (UK wording, amazon.nl/.co.uk)
         r"[Ee]xpédié",  # French
         r"[Ee]nviado",  # Spanish
         r"[Ss]pedito",  # Italian

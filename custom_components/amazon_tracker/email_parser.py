@@ -317,8 +317,9 @@ class AmazonEmailParser:
             # Common Amazon email format
             r"(?:Artikel|Item|Article|Producto):\s*(.+?)(?:\n|$)",
             r"(?:Produktname|Product name|Nom du produit):\s*(.+?)(?:\n|$)",
-            # Bulleted item list ("* Just for Men ... M45" followed by "Quantity: 5")
-            r"^[ \t]*[\*•-][ \t]+([^\n*]{5,150}?)[ \t]*$",
+            # Bulleted item list ("* Just for Men ... M45" followed by "Quantity: 5"); titles run past
+            # 150 characters (a 166-char one fell through to the legal-footer quote)
+            r"^[ \t]*[\*•-][ \t]+([^\n*]{5,400}?)[ \t]*$",
             # Quoted product names
             r'"([^"]{5,100})"',
         ]
