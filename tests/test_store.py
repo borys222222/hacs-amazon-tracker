@@ -108,6 +108,39 @@ class TestPackageStore:
         # Carrier should stay DHL (first known value)
         assert self.store.packages["111-1111111-1111111"]["carrier"] == "DHL"
 
+    def test_newer_mail_moves_estimated_delivery(self):
+        """A delay mail ("Now arriving Friday") must replace the earlier date."""
+        first = _make_package(order_number="222-2222222-2222222", last_updated="2026-10-04T20:14:21+00:00")
+        first["estimated_delivery"] = "2026-10-05"
+        self.store.merge_packages([first])
+        later = _make_package(order_number="222-2222222-2222222", last_updated="2026-10-05T09:00:00+00:00")
+        later["estimated_delivery"] = "2026-10-09"
+        changed = self.store.merge_packages([later])
+        assert "222-2222222-2222222" in changed
+        assert self.store.packages["222-2222222-2222222"]["estimated_delivery"] == "2026-10-09"
+
+    def test_older_mail_reread_does_not_move_date_or_timestamp(self):
+        """A rescan re-reads old mails after newer ones; they must not roll anything back."""
+        newer = _make_package(order_number="333-3333333-3333333", last_updated="2026-10-05T09:00:00+00:00")
+        newer["estimated_delivery"] = "2026-10-09"
+        self.store.merge_packages([newer])
+        older = _make_package(order_number="333-3333333-3333333", last_updated="2026-10-04T20:14:21+00:00")
+        older["estimated_delivery"] = "2026-10-05"
+        changed = self.store.merge_packages([older])
+        pkg = self.store.packages["333-3333333-3333333"]
+        assert pkg["estimated_delivery"] == "2026-10-09"
+        assert pkg["last_updated"] == "2026-10-05T09:00:00+00:00"
+        assert "333-3333333-3333333" not in changed
+
+    def test_newer_mail_without_date_keeps_known_date(self):
+        first = _make_package(order_number="444-4444444-4444444", last_updated="2026-10-04T20:14:21+00:00")
+        first["estimated_delivery"] = "2026-10-05"
+        self.store.merge_packages([first])
+        later = _make_package(order_number="444-4444444-4444444", last_updated="2026-10-05T19:19:31+00:00")
+        later["estimated_delivery"] = None
+        self.store.merge_packages([later])
+        assert self.store.packages["444-4444444-4444444"]["estimated_delivery"] == "2026-10-05"
+
     def test_skip_package_without_order_number(self):
         """Test that packages without order numbers are skipped."""
         pkg = _make_package()

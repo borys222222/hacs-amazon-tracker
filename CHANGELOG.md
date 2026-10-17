@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-10-17
+
+### Fixed
+- The estimated delivery date was filled once and never changed, so a later mail that moves it ("Now arriving Friday") was ignored. It now follows the newest mail (by the mail's own `Date`) that states a date; an older mail only fills a missing one.
+- `last_updated` was overwritten by whichever mail was merged last. A rescan re-reads old mails after newer ones, which rolled it back (and with it the package age) and marked every package as changed on every scan. It now only moves forward.
+
 ## [1.2.3] - 2026-10-17
 
 ### Fixed

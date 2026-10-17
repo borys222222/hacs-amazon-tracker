@@ -97,11 +97,19 @@ class PackageStore:
                         existing["status"] = new_status
                         updated = True
 
+                # A mail is "newer" only by its own Date. Rescans re-read old mails after newer
+                # ones, so arrival order says nothing.
+                epoch = datetime.min.replace(tzinfo=timezone.utc)
+                newer = bool(pkg.get("last_updated")) and (
+                    not existing.get("last_updated")
+                    or _parse_timestamp(pkg["last_updated"], epoch)
+                    > _parse_timestamp(existing["last_updated"], epoch)
+                )
+
                 # Fill fields only if current value is missing (never overwrite existing)
                 for field in [
                     "carrier",
                     "tracking_number",
-                    "estimated_delivery",
                     "product_name",
                 ]:
                     new_val = pkg.get(field)
@@ -109,8 +117,16 @@ class PackageStore:
                         existing[field] = new_val
                         updated = True
 
-                # Always update last_updated
-                if pkg.get("last_updated"):
+                # The estimated delivery follows the newest mail that states one: Amazon moves
+                # it in later mails ("Now arriving Friday"). An older mail only fills a gap.
+                new_eta = pkg.get("estimated_delivery")
+                old_eta = existing.get("estimated_delivery")
+                if new_eta and (not old_eta or (newer and new_eta != old_eta)):
+                    existing["estimated_delivery"] = new_eta
+                    updated = True
+
+                # last_updated only moves forward; it is the reference for "newer" and for age
+                if newer:
                     existing["last_updated"] = pkg["last_updated"]
                     updated = True
 
