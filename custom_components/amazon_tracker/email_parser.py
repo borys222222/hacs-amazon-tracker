@@ -173,11 +173,16 @@ class AmazonEmailParser:
 
         return None
 
-    def _extract_delivery_date(self, body: str) -> str | None:
-        """Extract estimated delivery date from email body."""
+    def _extract_delivery_date(self, body: str, reference: date | None = None) -> str | None:
+        """Extract estimated delivery date from email body.
+
+        ``reference`` is the day the mail was sent. Relative words ("tomorrow") and year-less
+        dates are resolved against it, never against the day of parsing: a rescan of an old
+        mail must give the same date as the first read did.
+        """
         # Relative phrases first ("Arriving today", "Delivery tomorrow", "Arriving Monday") —
         # the amazon.nl / amazon.com notification mails carry no absolute date at all.
-        today = date.today()
+        today = reference or date.today()
         relative = re.search(
             r"(?:[Aa]rriving|[Dd]elivery|[Dd]elivered|[Ll]ieferung|[Zz]ustellung|[Bb]ezorging|[Kk]omt)\s+"
             r"(?:by\s+|on\s+|am\s+|op\s+)?"
@@ -299,10 +304,10 @@ class AmazonEmailParser:
 
                     month_num = all_months.get(month_name)
                     if month_num:
-                        year = datetime.now().year
+                        year = today.year
                         delivery = date(year, month_num, day)
-                        # If date is in the past, assume next year
-                        if delivery < date.today():
+                        # If date is before the mail was sent, assume next year
+                        if delivery < today:
                             delivery = date(year + 1, month_num, day)
                         return delivery.isoformat()
             except (ValueError, KeyError):
@@ -363,16 +368,19 @@ class AmazonEmailParser:
         status = self._detect_status(subject)
         carrier = self._extract_carrier(body, language)
         tracking_number = self._extract_tracking_number(body, carrier)
-        delivery_date = self._extract_delivery_date(body)
         product_name = self._extract_product_name(body)
 
         # Get email date
         email_date = msg.get("Date", "")
+        mail_day = None
         try:
             parsed_date = email.utils.parsedate_to_datetime(email_date)
             email_date_str = parsed_date.isoformat()
+            # the recipient's calendar day (Amazon sends +0000; 23:30 UTC is already tomorrow here)
+            mail_day = parsed_date.astimezone().date() if parsed_date.tzinfo else parsed_date.date()
         except Exception:
             email_date_str = datetime.now().isoformat()
+        delivery_date = self._extract_delivery_date(body, mail_day)
 
         return {
             "order_number": order_number,

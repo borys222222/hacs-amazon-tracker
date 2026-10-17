@@ -359,7 +359,7 @@ class TestAmazonNlNotificationMail:
         assert result is not None
         assert result["order_number"] == "408-9156604-2496332"
         assert result["status"] == "out_for_delivery"
-        assert result["estimated_delivery"] == date.today().isoformat()
+        assert result["estimated_delivery"] == "2026-09-14"  # "Arriving today" in a mail of 14 Sep
         assert result["product_name"] == "Just for Men Mustache and Beard Hair Color Dark Brown M45"
 
     def test_relative_tomorrow_and_weekday(self):
@@ -411,3 +411,10 @@ class TestAmazonNlDispatchedLongProduct:
     def test_long_bulleted_product_wins_over_legal_quote(self):
         result = AmazonEmailParser(["amazon.nl"]).parse_email(self._mail())
         assert result["product_name"] == self.PRODUCT[:100]
+
+    def test_relative_date_counts_from_the_mail_not_from_today(self):
+        # "Arriving tomorrow" in a mail of Sun 4 Oct 2026 22:14 local means Mon 5 Oct. Resolved
+        # against today's date instead, every rescan pushed the ETA to "tomorrow" again and a
+        # parcel delivered on 5 Oct stayed on the card for two weeks (live, 2026-10-17).
+        result = AmazonEmailParser(["amazon.nl"]).parse_email(self._mail())
+        assert result["estimated_delivery"] == "2026-10-05"
